@@ -4,6 +4,7 @@ import logging
 import time
 from typing import List
 from pydub import AudioSegment
+from concurrent.futures import ThreadPoolExecutor
 
 AudioSegment.converter = os.environ.get("FFMPEG_PATH", "/opt/homebrew/bin/ffmpeg")
 AudioSegment.ffprobe = os.environ.get("FFPROBE_PATH", "/opt/homebrew/bin/ffprobe")
@@ -11,12 +12,21 @@ AudioSegment.ffprobe = os.environ.get("FFPROBE_PATH", "/opt/homebrew/bin/ffprobe
 logging.basicConfig(level=logging.INFO)
 
 
+def process_chunk(audio: AudioSegment, start_ms: int, end_ms: int) -> bytes:
+    """
+    오디오 청크를 처리하는 함수
+    """
+    part_of_audio = audio[start_ms:end_ms]
+    buffer = io.BytesIO()
+    part_of_audio.export(buffer, format="mp3")
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
 def split_audio(file_content: bytes, chunk_length_ms: int = 300000) -> List[bytes]:
     """
     오디오 파일을 분할하는 함수
-    - Fastapi에서는 파일 내용을 받아서 처리하기 때문에 파일 경로가 아닌 파일 내용을 받음. str -> bytes
     """
-
     start_time = time.time()
 
     try:
@@ -25,7 +35,6 @@ def split_audio(file_content: bytes, chunk_length_ms: int = 300000) -> List[byte
         logging.error(f"Error processing audio: {e}")
         raise
 
-    # Pydub는 밀리초 단위로 시간을 계산함.
     total_milliseconds = len(audio)
     total_chunks = int(total_milliseconds // chunk_length_ms + 1)
 
@@ -35,18 +44,20 @@ def split_audio(file_content: bytes, chunk_length_ms: int = 300000) -> List[byte
     # 파일명을 저장할 리스트
     output_chunks = []
 
-    for i in range(total_chunks):
-        if i < total_chunks - 1:
-            # 300초 단위로 오디오를 자름
-            part_of_audio = audio[i * chunk_length_ms : (i + 1) * chunk_length_ms]
-        else:
-            # 마지막 부분은 나머지 전체를 자름
-            part_of_audio = audio[i * chunk_length_ms :]
+    # ThreadPoolExecutor를 사용하여 오디오를 병렬 분할 처리
+    with ThreadPoolExecutor() as executor:
+        futures = []
+        for i in range(total_chunks):
+            start_ms = i * chunk_length_ms
+            end_ms = (
+                start_ms + chunk_length_ms
+                if i < total_chunks - 1
+                else total_milliseconds
+            )
+            futures.append(executor.submit(process_chunk, audio, start_ms, end_ms))
 
-        buffer = io.BytesIO()
-        part_of_audio.export(buffer, format="mp3")
-        buffer.seek(0)
-        output_chunks.append(buffer.getvalue())
+        for future in futures:
+            output_chunks.append(future.result())
 
     end_time = time.time()
     logging.info(f"Splitting audio took {end_time - start_time:.2f} seconds")
