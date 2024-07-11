@@ -6,27 +6,22 @@ from langchain.document_loaders.parsers.audio import (
     OpenAIWhisperParser,
     OpenAIWhisperParserLocal,
 )
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
-
-# 로컬 파싱을 사용할지 여부를 설정하는 플래그
+save_dir = "/Users/jiminking/Documents/김지민/projects/mywiki"
 local = False
 
-# 예제 YouTube URL 목록
-urls = ["https://youtu.be/HQU2vbsbXkU?si=i9z6MsbFpyYMPMqh"]
 
-# 오디오 파일을 저장할 디렉토리
-save_dir = "/Users/jiminking/Documents/김지민/projects/mywiki"
+def transcribe_youtube_video(url):
+    urls = [url]
+    if local:
+        loader = GenericLoader(
+            YoutubeAudioLoader(urls, save_dir), OpenAIWhisperParserLocal()
+        )
+    else:
+        loader = GenericLoader(
+            YoutubeAudioLoader(urls, save_dir), OpenAIWhisperParser()
+        )
 
-
-# Transcribe the videos to text
-if local:
-    loader = GenericLoader(
-        YoutubeAudioLoader(urls, save_dir), OpenAIWhisperParserLocal()
-    )
-else:
-    loader = GenericLoader(YoutubeAudioLoader(urls, save_dir), OpenAIWhisperParser())
-docs = loader.load()
-
-print(docs[0].page_content[0:500])
+    docs = loader.load()
+    return docs[0].page_content if docs else ""

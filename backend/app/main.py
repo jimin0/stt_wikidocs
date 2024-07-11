@@ -1,13 +1,14 @@
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI
+from .api.routes import router
+from .config.firebase_config import initialize_firebase
+from .audio_processing.youtube_audio_extractor import transcribe_youtube_video
 
 app = FastAPI()
 
+# 라우터 포함
+app.include_router(router)
 
-@app.get("/")
-async def root():
-    return {"message": "Welcome to MyWikiDocs API"}
+if __name__ == "__main__":
+    import uvicorn
 
-
-@app.post("/upload-audio/")
-async def upload_audio(file: UploadFile = File(...)):
-    return {"filename": file.filename, "message": "Audio uploaded successfully"}
+    uvicorn.run(app, host="0.0.0.0", port=8000)
